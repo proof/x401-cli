@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { parseArgs } from "node:util";
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import {
   loginCommand,
@@ -218,7 +219,7 @@ async function readStdin(): Promise<Buffer> {
 
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
 ) {
   const code = await run(process.argv.slice(2), {
     env: process.env,
