@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, readdir, readFile, stat, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { requirementOf } from "@proof.com/x401-agent";
 import { HEADER, verifier } from "@proof.com/x401-node";
 import { withLock, writeCredentials } from "../src/credentials.ts";
@@ -34,6 +38,19 @@ test("environmentOf reads the Proof environment from the signed request's audien
     }),
     undefined,
   );
+});
+
+test("the CLI runs when started through a symlink, as npm and npx install it", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "x401-cli-bin-"));
+  const link = join(dir, "x401-cli.ts");
+  await symlink(fileURLToPath(new URL("../src/cli.ts", import.meta.url)), link);
+
+  const { stdout } = await promisify(execFile)(process.execPath, [
+    link,
+    "--help",
+  ]);
+
+  assert.match(stdout, /^Usage: x401-cli/);
 });
 
 test("parseDuration accepts seconds, minutes, hours and bare seconds", () => {
