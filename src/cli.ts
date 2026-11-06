@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -38,6 +39,7 @@ Options
   --timeout <duration>  How long to wait for the user's approval, e.g. 9m (default: 15m)
   --no-wait             Return as soon as the approval is pending (exit 5), resume later
   --no-browser          login: print the sign-in URL instead of opening the browser
+  --device              login: sign in with a code on any device, without a local browser
   -X, --method <m>      fetch: HTTP method
   -H, --header <h>      fetch: header "Name: value", repeatable
   -d, --data <body>     fetch: body; @file or @- for stdin
@@ -75,6 +77,7 @@ function parse(argv: string[]): {
       timeout: { type: "string", default: DEFAULT_TIMEOUT },
       "no-wait": { type: "boolean", default: false },
       "no-browser": { type: "boolean", default: false },
+      device: { type: "boolean", default: false },
       method: { type: "string", short: "X" },
       header: { type: "string", short: "H", multiple: true, default: [] },
       data: { type: "string", short: "d" },
@@ -96,6 +99,7 @@ function parse(argv: string[]): {
       timeoutMs: parseDuration(values.timeout),
       noWait: values["no-wait"],
       noBrowser: values["no-browser"],
+      device: values.device,
       ...(values.method !== undefined && {
         method: values.method.toUpperCase(),
       }),
@@ -227,6 +231,7 @@ if (
     fetch: globalThis.fetch,
     openBrowser,
     now: () => Math.floor(Date.now() / 1000),
+    sleep,
     readStdin,
   });
   process.exitCode = code;

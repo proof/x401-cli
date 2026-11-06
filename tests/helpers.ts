@@ -44,6 +44,50 @@ export const AS_METADATA = {
   token_endpoint_auth_methods_supported: ["none"],
 };
 
+export const DEVICE_METADATA = {
+  ...AS_METADATA,
+  device_authorization_endpoint: `${SANDBOX}/oauth/v2/device_authorization`,
+  grant_types_supported: [
+    "authorization_code",
+    "refresh_token",
+    "urn:ietf:params:oauth:grant-type:device_code",
+  ],
+};
+
+export const DEVICE_AUTHORIZATION = {
+  device_code: "the-device-code",
+  user_code: "WDJB-MJHT",
+  verification_uri: `${SANDBOX}/oauth/device`,
+  verification_uri_complete: `${SANDBOX}/oauth/device?user_code=WDJB-MJHT`,
+  expires_in: 600,
+  interval: 5,
+};
+
+export const oauthError = (
+  error: string,
+  status = 400,
+  headers: Record<string, string> = {},
+) => Response.json({ error }, { status, headers });
+
+export const deviceRoute =
+  (polls: (() => Response)[]): Route =>
+  (request, url) => {
+    if (url.origin !== SANDBOX) {
+      return undefined;
+    }
+    const key = `${request.method} ${url.pathname}`;
+    if (key === "GET /.well-known/oauth-authorization-server") {
+      return Response.json(DEVICE_METADATA);
+    }
+    if (key === "POST /oauth/v2/device_authorization") {
+      return Response.json(DEVICE_AUTHORIZATION);
+    }
+    if (key === "POST /oauth/v2/token") {
+      return (polls.shift() ?? (() => Response.json(TOKENS)))();
+    }
+    return undefined;
+  };
+
 export const PENDING = {
   id: "ot1",
   status: "pending",
@@ -179,6 +223,7 @@ export async function cli(
     },
     openBrowser: async () => undefined,
     now: () => NOW,
+    sleep: async () => undefined,
     readStdin: async () => Buffer.alloc(0),
     ...deps,
   });

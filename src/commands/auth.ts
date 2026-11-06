@@ -12,7 +12,7 @@ import {
   type Tokens,
 } from "../credentials.ts";
 import { CLIENT_ID, ENVIRONMENTS } from "../environment.ts";
-import { login, revoke } from "../oauth.ts";
+import { deviceLogin, login, revoke } from "../oauth.ts";
 import { CliError, EXIT, event, failureJson } from "../output.ts";
 
 const environments = (ctx: Context): Environment[] =>
@@ -22,12 +22,17 @@ const environmentOf = (ctx: Context): Environment =>
   ctx.options.sandbox ? "sandbox" : "production";
 
 async function signIn(ctx: Context, environment: Environment): Promise<Tokens> {
-  const tokens = await login(oauthDeps(ctx, environment), {
-    io: ctx.io,
-    openBrowser: ctx.openBrowser,
-    noBrowser: ctx.options.noBrowser,
-    timeoutMs: ctx.options.timeoutMs,
-  });
+  const deps = oauthDeps(ctx, environment);
+  const { io } = ctx;
+  const { timeoutMs } = ctx.options;
+  const tokens = ctx.options.device
+    ? await deviceLogin(deps, { io, timeoutMs, sleep: ctx.sleep })
+    : await login(deps, {
+        io,
+        openBrowser: ctx.openBrowser,
+        noBrowser: ctx.options.noBrowser,
+        timeoutMs,
+      });
   const path = ctx.options.auth;
   await withLock(path, async () => {
     const credentials = await readCredentials(path);

@@ -170,6 +170,125 @@ export async function login(
   }
 }
 
+const DEFAULT_INTERVAL_SECONDS = 5;
+const SLOW_DOWN_SECONDS = 5;
+
+function oauthErrorOf(error: unknown): string | undefined {
+  if (error instanceof oauth.ResponseBodyError) {
+    return error.error;
+  }
+  if (error instanceof oauth.WWWAuthenticateChallengeError) {
+    return error.cause.find(
+      (challenge) => challenge.parameters.error !== undefined,
+    )?.parameters.error;
+  }
+  return undefined;
+}
+
+function deviceRefusal(error: unknown): CliError {
+  const code = oauthErrorOf(error);
+  const reason =
+    code !== undefined
+      ? ` (${code})`
+      : error instanceof Error
+        ? `: ${error.message}`
+        : "";
+  return new CliError(
+    "unauthorized",
+    `Proof refused the device sign-in${reason}`,
+  );
+}
+
+export async function deviceLogin(
+  deps: OAuthDeps,
+  options: {
+    io: Io;
+    timeoutMs: number;
+    sleep: (ms: number) => Promise<void>;
+  },
+): Promise<Tokens> {
+  const as = await server(deps);
+  if (as.device_authorization_endpoint === undefined) {
+    throw new CliError(
+      "usage",
+      `${deps.issuer} does not offer device sign-in; run login without --device`,
+    );
+  }
+  const started = await reach("start the device sign-in", () =>
+    oauth.deviceAuthorizationRequest(
+      as,
+      CLIENT,
+      oauth.None(),
+      { scope: SCOPE },
+      requestOptions(deps),
+    ),
+  );
+  let device: oauth.DeviceAuthorizationResponse;
+  try {
+    device = await oauth.processDeviceAuthorizationResponse(
+      as,
+      CLIENT,
+      started,
+    );
+  } catch (error) {
+    throw deviceRefusal(error);
+  }
+  event(
+    options.io,
+    "login",
+    `to sign in, open ${device.verification_uri} and enter the code ${device.user_code}`,
+  );
+  if (device.verification_uri_complete !== undefined) {
+    event(
+      options.io,
+      "login",
+      `or open this URL: ${device.verification_uri_complete}`,
+    );
+  }
+  const limitMs = Math.min(options.timeoutMs, device.expires_in * 1000);
+  let intervalMs = (device.interval ?? DEFAULT_INTERVAL_SECONDS) * 1000;
+  let waitedMs = 0;
+  for (;;) {
+    if (waitedMs + intervalMs > limitMs) {
+      throw new CliError("unauthorized", "sign-in did not complete in time");
+    }
+    await options.sleep(intervalMs);
+    waitedMs += intervalMs;
+    const response = await reach("check the device sign-in", () =>
+      oauth.deviceCodeGrantRequest(
+        as,
+        CLIENT,
+        oauth.None(),
+        device.device_code,
+        requestOptions(deps),
+      ),
+    );
+    try {
+      return tokens(
+        deps,
+        await oauth.processDeviceCodeResponse(as, CLIENT, response),
+      );
+    } catch (error) {
+      switch (oauthErrorOf(error)) {
+        case "authorization_pending":
+          break;
+        case "slow_down":
+          intervalMs += SLOW_DOWN_SECONDS * 1000;
+          break;
+        case "access_denied":
+          throw new CliError("cancelled", "the sign-in was denied");
+        case "expired_token":
+          throw new CliError(
+            "expired",
+            "the sign-in code expired; run login again",
+          );
+        default:
+          throw deviceRefusal(error);
+      }
+    }
+  }
+}
+
 export async function refresh(
   deps: OAuthDeps,
   current: Tokens,
