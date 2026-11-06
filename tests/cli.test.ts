@@ -617,11 +617,10 @@ test("logout revokes the refresh token and forgets the login", async () => {
 });
 
 const DEVICE_PROMPT = [
-  "If the browser does not open or you wish to use a different device to authorize this request, open the following URL:",
   "",
   DEVICE_AUTHORIZATION.verification_uri,
   "",
-  "Then enter the code:",
+  "and enter this code:",
   "",
   "WDJB-MJHT",
   "",
@@ -657,7 +656,8 @@ test("login --device opens the URL with the code, polls until approved and store
   assert.equal(
     result.stderr,
     [
-      "Attempting to open your default browser.",
+      "Opening Proof in your browser to sign in.",
+      "If nothing opened, or to sign in from another device, go to:",
       DEVICE_PROMPT,
       `x401-cli: logged_in sandbox (${auth})`,
       "",
@@ -718,7 +718,7 @@ test("login --device prints the URL and the code without the browser line when t
     assert.equal(result.code, 0, result.stderr);
     assert.equal(
       result.stderr,
-      `${DEVICE_PROMPT}\nx401-cli: logged_in sandbox (${auth})\n`,
+      `To sign in, go to:\n${DEVICE_PROMPT}\nx401-cli: logged_in sandbox (${auth})\n`,
     );
   }
 });

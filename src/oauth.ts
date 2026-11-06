@@ -245,12 +245,16 @@ export async function deviceLogin(
   );
   options.io.stderr.write(
     [
-      ...(opened ? ["Attempting to open your default browser."] : []),
-      "If the browser does not open or you wish to use a different device to authorize this request, open the following URL:",
+      ...(opened
+        ? [
+            "Opening Proof in your browser to sign in.",
+            "If nothing opened, or to sign in from another device, go to:",
+          ]
+        : ["To sign in, go to:"]),
       "",
       device.verification_uri,
       "",
-      "Then enter the code:",
+      "and enter this code:",
       "",
       device.user_code,
       "",

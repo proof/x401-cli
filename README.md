@@ -78,12 +78,12 @@ x401-cli login --device
 ```
 
 ```
-Attempting to open your default browser.
-If the browser does not open or you wish to use a different device to authorize this request, open the following URL:
+Opening Proof in your browser to sign in.
+If nothing opened, or to sign in from another device, go to:
 
 https://api.proof.com/oauth/v2/device
 
-Then enter the code:
+and enter this code:
 
 WDJB-MJHT
 
