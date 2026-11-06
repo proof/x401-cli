@@ -66,6 +66,30 @@ x401-cli resume ot7gzqj4p
 x401-cli cancel ot7gzqj4p
 ```
 
+### Sign in with a code
+
+`--device` signs in with a code instead of a local redirect, for example on a remote host or in a
+container. The CLI opens the sign-in page in your browser when it can, and always prints the URL and
+the code so that you can sign in from any device. Check that the page shows the same code, then
+approve. The CLI waits for the approval.
+
+```sh
+x401-cli login --device
+```
+
+```
+Opening Proof in your browser to sign in.
+If nothing opened, or to sign in from another device, go to:
+
+https://api.proof.com/oauth/v2/device
+
+and enter this code:
+
+WDJB-MJHT
+
+x401-cli: logged_in production (~/.config/proof/x401-cli/credentials.json)
+```
+
 ### Get the access token
 
 `token` prints the access token.
@@ -105,6 +129,7 @@ export PROOF_ACCESS_TOKEN=$(x401-cli token --sandbox)
 | `--timeout <d>`       | `login`, `token`, `fetch`, `resume`, `present`           | How long to wait for the sign-in or the approval, e.g. `9m` (default 15m)                                   |
 | `--no-wait`           | `fetch`, `present`                                       | Exits with code 5 while the approval is pending                                                             |
 | `--no-browser`        | `login`, `token`                                         | Prints the sign-in URL instead of opening the browser                                                       |
+| `--device`            | `login`, `token`                                         | Signs in with a code, without a local redirect; the sign-in page can open on any device                     |
 | `-X`, `-H`, `-d`      | `fetch`                                                  | Method, header, body, as in curl; `-d @file` and `-d @-` read the body from a file or stdin                 |
 | `-o <file>`           | `fetch`                                                  | Writes the body to a file                                                                                   |
 | `--proof-request <v>` | `present`                                                | The `PROOF-REQUEST` value, `-` for stdin, `@file`                                                           |

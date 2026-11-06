@@ -16,6 +16,7 @@ export type Deps = {
   fetch: typeof globalThis.fetch;
   openBrowser: (url: string) => Promise<void>;
   now: () => number;
+  sleep: (ms: number) => Promise<void>;
   readStdin: () => Promise<Buffer>;
   issuers?: Issuers;
 };
@@ -27,6 +28,7 @@ export type Options = {
   timeoutMs: number;
   noWait: boolean;
   noBrowser: boolean;
+  device: boolean;
   method?: string;
   headers: string[];
   data?: string;

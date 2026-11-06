@@ -6,11 +6,13 @@ in to Proof and stores the tokens; everything x401 comes from `@proof.com/x401-a
 ## Rules
 
 1. **No x401 logic here.** The CLI maps x401-agent calls to commands, files and exit codes.
-2. **OAuth through `oauth4webapi` only.** Authorization code with PKCE S256 and a loopback redirect;
-   public client `cag5xwbbz`, no secret.
+2. **OAuth through `oauth4webapi` only.** Two login modes, one public client `cag5xwbbz`, no secret:
+   authorization code with PKCE S256 and a loopback redirect (default), and the device
+   authorization grant, RFC 8628 (`login --device`), which polls at the server's `interval`.
 3. **Output is a contract.** stdout carries only the endpoint's body, one JSON object (`--json`),
    the token (`token`) or the `PROOF-RESPONSE` (`present`). stderr carries one `x401-cli: <code>`
-   line per event. Exit codes live in `src/output.ts`. Never print a token anywhere else.
+   line per event; the one exception is the `login --device` prompt, a plain multi-line block with
+   the URL and the user code. Exit codes live in `src/output.ts`. Never print a token anywhere else.
 4. **Refresh under the credentials-file lock**, and store the new pair before using it: Proof
    revokes the grant when a rotated refresh token is reused.
 5. **Never follow redirects.**

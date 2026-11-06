@@ -103,14 +103,35 @@ function listen(): Promise<{
   });
 }
 
+export type SignInOptions = {
+  io: Io;
+  openBrowser: (url: string) => Promise<void>;
+  noBrowser: boolean;
+  timeoutMs: number;
+};
+
+const openedBrowser = async (
+  options: SignInOptions,
+  url: string,
+): Promise<boolean> =>
+  !options.noBrowser &&
+  (await options.openBrowser(url).then(
+    () => true,
+    () => false,
+  ));
+
+async function showSignIn(
+  options: SignInOptions,
+  url: string,
+  messages: { opened: string; manual: string },
+): Promise<void> {
+  const opened = await openedBrowser(options, url);
+  event(options.io, "login", opened ? messages.opened : messages.manual);
+}
+
 export async function login(
   deps: OAuthDeps,
-  options: {
-    io: Io;
-    openBrowser: (url: string) => Promise<void>;
-    noBrowser: boolean;
-    timeoutMs: number;
-  },
+  options: SignInOptions,
 ): Promise<Tokens> {
   const as = await server(deps);
   const codeVerifier = oauth.generateRandomCodeVerifier();
@@ -128,12 +149,10 @@ export async function login(
     );
     url.searchParams.set("code_challenge_method", "S256");
     url.searchParams.set("state", state);
-    if (options.noBrowser) {
-      event(options.io, "login", `open this URL to sign in: ${url.href}`);
-    } else {
-      event(options.io, "login", "opening your browser to sign in to Proof");
-      await options.openBrowser(url.href);
-    }
+    await showSignIn(options, url.href, {
+      opened: "opened your browser to sign in to Proof",
+      manual: `open this URL to sign in: ${url.href}`,
+    });
     const timeout = new Promise<never>((_resolve, reject) => {
       setTimeout(
         () =>
@@ -167,6 +186,122 @@ export async function login(
     );
   } finally {
     close();
+  }
+}
+
+const DEFAULT_INTERVAL_SECONDS = 5;
+const SLOW_DOWN_SECONDS = 5;
+
+const oauthErrorOf = (error: unknown): string | undefined =>
+  error instanceof oauth.ResponseBodyError ? error.error : undefined;
+
+function deviceRefusal(error: unknown): CliError {
+  const code = oauthErrorOf(error);
+  const reason =
+    code !== undefined
+      ? ` (${code})`
+      : error instanceof Error
+        ? `: ${error.message}`
+        : "";
+  return new CliError(
+    "unauthorized",
+    `Proof refused the device sign-in${reason}`,
+  );
+}
+
+export async function deviceLogin(
+  deps: OAuthDeps,
+  options: SignInOptions & { sleep: (ms: number) => Promise<void> },
+): Promise<Tokens> {
+  const as = await server(deps);
+  if (as.device_authorization_endpoint === undefined) {
+    throw new CliError(
+      "usage",
+      `${deps.issuer} does not offer device sign-in; run login without --device`,
+    );
+  }
+  const started = await reach("start the device sign-in", () =>
+    oauth.deviceAuthorizationRequest(
+      as,
+      CLIENT,
+      oauth.None(),
+      { scope: SCOPE },
+      requestOptions(deps),
+    ),
+  );
+  let device: oauth.DeviceAuthorizationResponse;
+  try {
+    device = await oauth.processDeviceAuthorizationResponse(
+      as,
+      CLIENT,
+      started,
+    );
+  } catch (error) {
+    throw deviceRefusal(error);
+  }
+  const opened = await openedBrowser(
+    options,
+    device.verification_uri_complete ?? device.verification_uri,
+  );
+  options.io.stderr.write(
+    [
+      ...(opened
+        ? [
+            "Opening Proof in your browser to sign in.",
+            "If nothing opened, or to sign in from another device, go to:",
+          ]
+        : ["To sign in, go to:"]),
+      "",
+      device.verification_uri,
+      "",
+      "and enter this code:",
+      "",
+      device.user_code,
+      "",
+      "",
+    ].join("\n"),
+  );
+  const limitMs = Math.min(options.timeoutMs, device.expires_in * 1000);
+  let intervalMs = (device.interval ?? DEFAULT_INTERVAL_SECONDS) * 1000;
+  let waitedMs = 0;
+  for (;;) {
+    if (waitedMs + intervalMs > limitMs) {
+      throw new CliError("unauthorized", "sign-in did not complete in time");
+    }
+    await options.sleep(intervalMs);
+    waitedMs += intervalMs;
+    const response = await reach("check the device sign-in", () =>
+      oauth.deviceCodeGrantRequest(
+        as,
+        CLIENT,
+        oauth.None(),
+        device.device_code,
+        requestOptions(deps),
+      ),
+    );
+    try {
+      return tokens(
+        deps,
+        await oauth.processDeviceCodeResponse(as, CLIENT, response),
+      );
+    } catch (error) {
+      switch (oauthErrorOf(error)) {
+        case "authorization_pending":
+          break;
+        case "slow_down":
+          intervalMs += SLOW_DOWN_SECONDS * 1000;
+          break;
+        case "access_denied":
+          throw new CliError("cancelled", "the sign-in was denied");
+        case "expired_token":
+          throw new CliError(
+            "expired",
+            "the sign-in code expired; run login again",
+          );
+        default:
+          throw deviceRefusal(error);
+      }
+    }
   }
 }
 

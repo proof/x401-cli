@@ -13,7 +13,10 @@ import { environmentOf } from "../src/environment.ts";
 import { parseDuration } from "../src/output.ts";
 import {
   cli,
+  DEVICE_AUTHORIZATION,
+  deviceRoute,
   NOW,
+  oauthError,
   PENDING,
   proofRequestFor,
   proofRoute,
@@ -611,4 +614,199 @@ test("logout revokes the refresh token and forgets the login", async () => {
   const form = new URLSearchParams(await revoke.text());
   assert.equal(form.get("token"), "ref");
   assert.deepEqual(await readJson(auth), {});
+});
+
+const DEVICE_PROMPT = [
+  "",
+  DEVICE_AUTHORIZATION.verification_uri,
+  "",
+  "and enter this code:",
+  "",
+  "WDJB-MJHT",
+  "",
+].join("\n");
+
+test("login --device opens the URL with the code, polls until approved and stores the tokens", async () => {
+  const { auth } = await workspace();
+  const { fetch, calls } = stubFetch(
+    deviceRoute([
+      () => oauthError("authorization_pending"),
+      () => oauthError("authorization_pending"),
+    ]),
+  );
+  const waits: number[] = [];
+  const opened: string[] = [];
+
+  const result = await cli(
+    ["login", "--device", "--sandbox", "--json", "--auth", auth],
+    {
+      fetch,
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
+      openBrowser: async (url) => {
+        opened.push(url);
+      },
+    },
+  );
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(opened, [DEVICE_AUTHORIZATION.verification_uri_complete]);
+  assert.deepEqual(waits, [5000, 5000, 5000]);
+  assert.equal(
+    result.stderr,
+    [
+      "Opening Proof in your browser to sign in.",
+      "If nothing opened, or to sign in from another device, go to:",
+      DEVICE_PROMPT,
+      `x401-cli: logged_in sandbox (${auth})`,
+      "",
+    ].join("\n"),
+  );
+  assert.deepEqual(result.json(), {
+    environment: "sandbox",
+    expires_at: NOW + 7200,
+  });
+  const start = calls.find((call) =>
+    call.url.endsWith("/oauth/v2/device_authorization"),
+  )!;
+  const startForm = new URLSearchParams(await start.text());
+  assert.equal(startForm.get("client_id"), "cag5xwbbz");
+  assert.equal(startForm.get("scope"), "agentic");
+  const polls = calls.filter((call) => call.url.endsWith("/oauth/v2/token"));
+  assert.equal(polls.length, 3);
+  const pollForm = new URLSearchParams(await polls[0]!.text());
+  assert.equal(
+    pollForm.get("grant_type"),
+    "urn:ietf:params:oauth:grant-type:device_code",
+  );
+  assert.equal(pollForm.get("device_code"), "the-device-code");
+  assert.equal(pollForm.get("client_id"), "cag5xwbbz");
+  assert.equal(pollForm.has("client_secret"), false);
+  assert.deepEqual(await readJson(auth), {
+    sandbox: {
+      issuer: "https://api.fairfax.proof.com",
+      access_token: "fresh-access",
+      refresh_token: "fresh-refresh",
+      expires_at: NOW + 7200,
+      scope: "agentic",
+    },
+  });
+  assert.equal(result.stdout.includes("fresh-"), false);
+  assert.equal(result.stderr.includes("fresh-"), false);
+  assert.equal(result.stderr.includes("the-device-code"), false);
+});
+
+test("login --device prints the URL and the code without the browser line when the browser cannot open or --no-browser is set", async () => {
+  for (const [flags, openBrowser] of [
+    [
+      [],
+      async () => {
+        throw new Error("no display");
+      },
+    ],
+    [["--no-browser"], async () => assert.fail("must not open the browser")],
+  ] as const) {
+    const { auth } = await workspace();
+    const { fetch } = stubFetch(deviceRoute([]));
+
+    const result = await cli(
+      ["login", "--device", "--sandbox", ...flags, "--auth", auth],
+      { fetch, openBrowser },
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(
+      result.stderr,
+      `To sign in, go to:\n${DEVICE_PROMPT}\nx401-cli: logged_in sandbox (${auth})\n`,
+    );
+  }
+});
+
+test("login --device waits longer after slow_down", async () => {
+  const { auth } = await workspace();
+  const { fetch } = stubFetch(deviceRoute([() => oauthError("slow_down")]));
+  const waits: number[] = [];
+
+  const result = await cli(["login", "--device", "--sandbox", "--auth", auth], {
+    fetch,
+    sleep: async (ms) => {
+      waits.push(ms);
+    },
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(waits, [5000, 10000]);
+});
+
+test("login --device exits cancelled when denied and expired when the code expires", async () => {
+  for (const [error, code, name] of [
+    ["access_denied", 8, "cancelled"],
+    ["expired_token", 7, "expired"],
+  ] as const) {
+    const { auth } = await workspace();
+    const { fetch } = stubFetch(deviceRoute([() => oauthError(error)]));
+
+    const result = await cli(
+      ["login", "--device", "--sandbox", "--json", "--auth", auth],
+      { fetch },
+    );
+
+    assert.equal(result.code, code, result.stderr);
+    assert.equal(result.json().error, name);
+    assert.deepEqual(await readJson(auth).catch(() => ({})), {});
+  }
+});
+
+test("login --device exits unauthorized when --timeout runs out before the approval", async () => {
+  const { auth } = await workspace();
+  const pending = () => oauthError("authorization_pending");
+  const { fetch, calls } = stubFetch(
+    deviceRoute([pending, pending, pending, pending]),
+  );
+
+  const result = await cli(
+    ["login", "--device", "--sandbox", "--timeout", "12s", "--auth", auth],
+    { fetch },
+  );
+
+  assert.equal(result.code, 3);
+  assert.match(result.stderr, /sign-in did not complete in time/);
+  assert.equal(
+    calls.filter((call) => call.url.endsWith("/oauth/v2/token")).length,
+    2,
+  );
+});
+
+test("login --device names the OAuth error when Proof refuses the client", async () => {
+  const { auth } = await workspace();
+  const { fetch } = stubFetch(
+    (request, url) =>
+      url.pathname === "/oauth/v2/device_authorization"
+        ? oauthError("invalid_client", 401)
+        : undefined,
+    deviceRoute([]),
+  );
+
+  const result = await cli(["login", "--device", "--sandbox", "--auth", auth], {
+    fetch,
+  });
+
+  assert.equal(result.code, 3);
+  assert.match(
+    result.stderr,
+    /x401-cli: unauthorized Proof refused the device sign-in \(invalid_client\)/,
+  );
+});
+
+test("login --device is a usage error when Proof does not offer device sign-in", async () => {
+  const { auth } = await workspace();
+  const { fetch } = stubFetch(proofRoute());
+
+  const result = await cli(["login", "--device", "--sandbox", "--auth", auth], {
+    fetch,
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /does not offer device sign-in/);
 });
