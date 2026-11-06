@@ -69,16 +69,25 @@ x401-cli cancel ot7gzqj4p
 ### Sign in with a code
 
 `--device` signs in with a code instead of a local redirect, for example on a remote host or in a
-container. The CLI opens the sign-in page in your browser when it can; otherwise it prints the URL
-for you to open on any device. Check that the page shows the same code, then approve. The CLI waits
-for the approval.
+container. The CLI opens the sign-in page in your browser when it can, and always prints the URL and
+the code so that you can sign in from any device. Check that the page shows the same code, then
+approve. The CLI waits for the approval.
 
 ```sh
 x401-cli login --device
 ```
 
 ```
-x401-cli: login open https://api.proof.com/oauth/v2/device?user_code=WDJB-MJHT to sign in; check that it shows the code WDJB-MJHT
+Attempting to open your default browser.
+If the browser does not open or you wish to use a different device to authorize this request, open the following URL:
+
+https://api.proof.com/oauth/v2/device
+
+Then enter the code:
+
+WDJB-MJHT
+
+x401-cli: logged_in production (~/.config/proof/x401-cli/credentials.json)
 ```
 
 ### Get the access token

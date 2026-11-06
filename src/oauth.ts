@@ -110,17 +110,22 @@ export type SignInOptions = {
   timeoutMs: number;
 };
 
+const openedBrowser = async (
+  options: SignInOptions,
+  url: string,
+): Promise<boolean> =>
+  !options.noBrowser &&
+  (await options.openBrowser(url).then(
+    () => true,
+    () => false,
+  ));
+
 async function showSignIn(
   options: SignInOptions,
   url: string,
   messages: { opened: string; manual: string },
 ): Promise<void> {
-  const opened =
-    !options.noBrowser &&
-    (await options.openBrowser(url).then(
-      () => true,
-      () => false,
-    ));
+  const opened = await openedBrowser(options, url);
   event(options.io, "login", opened ? messages.opened : messages.manual);
 }
 
@@ -234,15 +239,24 @@ export async function deviceLogin(
   } catch (error) {
     throw deviceRefusal(error);
   }
-  const url = device.verification_uri_complete ?? device.verification_uri;
-  const check =
-    device.verification_uri_complete === undefined
-      ? `enter the code ${device.user_code}`
-      : `check that it shows the code ${device.user_code}`;
-  await showSignIn(options, url, {
-    opened: `opened ${url} in your browser; ${check}`,
-    manual: `open ${url} to sign in; ${check}`,
-  });
+  const opened = await openedBrowser(
+    options,
+    device.verification_uri_complete ?? device.verification_uri,
+  );
+  options.io.stderr.write(
+    [
+      ...(opened ? ["Attempting to open your default browser."] : []),
+      "If the browser does not open or you wish to use a different device to authorize this request, open the following URL:",
+      "",
+      device.verification_uri,
+      "",
+      "Then enter the code:",
+      "",
+      device.user_code,
+      "",
+      "",
+    ].join("\n"),
+  );
   const limitMs = Math.min(options.timeoutMs, device.expires_in * 1000);
   let intervalMs = (device.interval ?? DEFAULT_INTERVAL_SECONDS) * 1000;
   let waitedMs = 0;

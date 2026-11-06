@@ -616,6 +616,17 @@ test("logout revokes the refresh token and forgets the login", async () => {
   assert.deepEqual(await readJson(auth), {});
 });
 
+const DEVICE_PROMPT = [
+  "If the browser does not open or you wish to use a different device to authorize this request, open the following URL:",
+  "",
+  DEVICE_AUTHORIZATION.verification_uri,
+  "",
+  "Then enter the code:",
+  "",
+  "WDJB-MJHT",
+  "",
+].join("\n");
+
 test("login --device opens the URL with the code, polls until approved and stores the tokens", async () => {
   const { auth } = await workspace();
   const { fetch, calls } = stubFetch(
@@ -646,7 +657,8 @@ test("login --device opens the URL with the code, polls until approved and store
   assert.equal(
     result.stderr,
     [
-      `x401-cli: login opened ${DEVICE_AUTHORIZATION.verification_uri_complete} in your browser; check that it shows the code WDJB-MJHT`,
+      "Attempting to open your default browser.",
+      DEVICE_PROMPT,
       `x401-cli: logged_in sandbox (${auth})`,
       "",
     ].join("\n"),
@@ -685,8 +697,7 @@ test("login --device opens the URL with the code, polls until approved and store
   assert.equal(result.stderr.includes("the-device-code"), false);
 });
 
-test("login --device prints the URL with the code when the browser cannot open or --no-browser is set", async () => {
-  const manual = `x401-cli: login open ${DEVICE_AUTHORIZATION.verification_uri_complete} to sign in; check that it shows the code WDJB-MJHT\n`;
+test("login --device prints the URL and the code without the browser line when the browser cannot open or --no-browser is set", async () => {
   for (const [flags, openBrowser] of [
     [
       [],
@@ -705,8 +716,10 @@ test("login --device prints the URL with the code when the browser cannot open o
     );
 
     assert.equal(result.code, 0, result.stderr);
-    assert.equal(result.stderr.startsWith(manual), true, result.stderr);
-    assert.equal(result.stderr.split("\n").length, 3);
+    assert.equal(
+      result.stderr,
+      `${DEVICE_PROMPT}\nx401-cli: logged_in sandbox (${auth})\n`,
+    );
   }
 });
 

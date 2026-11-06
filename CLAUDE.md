@@ -11,7 +11,8 @@ in to Proof and stores the tokens; everything x401 comes from `@proof.com/x401-a
    authorization grant, RFC 8628 (`login --device`), which polls at the server's `interval`.
 3. **Output is a contract.** stdout carries only the endpoint's body, one JSON object (`--json`),
    the token (`token`) or the `PROOF-RESPONSE` (`present`). stderr carries one `x401-cli: <code>`
-   line per event. Exit codes live in `src/output.ts`. Never print a token anywhere else.
+   line per event; the one exception is the `login --device` prompt, a plain multi-line block with
+   the URL and the user code. Exit codes live in `src/output.ts`. Never print a token anywhere else.
 4. **Refresh under the credentials-file lock**, and store the new pair before using it: Proof
    revokes the grant when a rotated refresh token is reused.
 5. **Never follow redirects.**
