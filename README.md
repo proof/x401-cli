@@ -66,18 +66,19 @@ x401-cli resume ot7gzqj4p
 x401-cli cancel ot7gzqj4p
 ```
 
-### Sign in without a local browser
+### Sign in with a code
 
-On a remote host or in a container, `--device` prints a URL and a code. Open the URL on any device,
-sign in to Proof and enter the code. The CLI waits for the approval.
+`--device` signs in with a code instead of a local redirect, for example on a remote host or in a
+container. The CLI opens the sign-in page in your browser when it can; otherwise it prints the URL
+for you to open on any device. Check that the page shows the same code, then approve. The CLI waits
+for the approval.
 
 ```sh
 x401-cli login --device
 ```
 
 ```
-x401-cli: login to sign in, open https://api.proof.com/oauth/v2/device and enter the code WDJB-MJHT
-x401-cli: login or open this URL: https://api.proof.com/oauth/v2/device?user_code=WDJB-MJHT
+x401-cli: login open https://api.proof.com/oauth/v2/device?user_code=WDJB-MJHT to sign in; check that it shows the code WDJB-MJHT
 ```
 
 ### Get the access token
@@ -119,7 +120,7 @@ export PROOF_ACCESS_TOKEN=$(x401-cli token --sandbox)
 | `--timeout <d>`       | `login`, `token`, `fetch`, `resume`, `present`           | How long to wait for the sign-in or the approval, e.g. `9m` (default 15m)                                   |
 | `--no-wait`           | `fetch`, `present`                                       | Exits with code 5 while the approval is pending                                                             |
 | `--no-browser`        | `login`, `token`                                         | Prints the sign-in URL instead of opening the browser                                                       |
-| `--device`            | `login`, `token`                                         | Signs in with a code that you enter on any device, for hosts with no local browser                          |
+| `--device`            | `login`, `token`                                         | Signs in with a code, without a local redirect; the sign-in page can open on any device                     |
 | `-X`, `-H`, `-d`      | `fetch`                                                  | Method, header, body, as in curl; `-d @file` and `-d @-` read the body from a file or stdin                 |
 | `-o <file>`           | `fetch`                                                  | Writes the body to a file                                                                                   |
 | `--proof-request <v>` | `present`                                                | The `PROOF-REQUEST` value, `-` for stdin, `@file`                                                           |

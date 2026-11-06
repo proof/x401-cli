@@ -23,16 +23,15 @@ const environmentOf = (ctx: Context): Environment =>
 
 async function signIn(ctx: Context, environment: Environment): Promise<Tokens> {
   const deps = oauthDeps(ctx, environment);
-  const { io } = ctx;
-  const { timeoutMs } = ctx.options;
+  const options = {
+    io: ctx.io,
+    openBrowser: ctx.openBrowser,
+    noBrowser: ctx.options.noBrowser,
+    timeoutMs: ctx.options.timeoutMs,
+  };
   const tokens = ctx.options.device
-    ? await deviceLogin(deps, { io, timeoutMs, sleep: ctx.sleep })
-    : await login(deps, {
-        io,
-        openBrowser: ctx.openBrowser,
-        noBrowser: ctx.options.noBrowser,
-        timeoutMs,
-      });
+    ? await deviceLogin(deps, { ...options, sleep: ctx.sleep })
+    : await login(deps, options);
   const path = ctx.options.auth;
   await withLock(path, async () => {
     const credentials = await readCredentials(path);

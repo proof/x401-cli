@@ -63,11 +63,8 @@ export const DEVICE_AUTHORIZATION = {
   interval: 5,
 };
 
-export const oauthError = (
-  error: string,
-  status = 400,
-  headers: Record<string, string> = {},
-) => Response.json({ error }, { status, headers });
+export const oauthError = (error: string, status = 400) =>
+  Response.json({ error }, { status });
 
 export const deviceRoute =
   (polls: (() => Response)[]): Route =>

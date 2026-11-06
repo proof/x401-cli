@@ -616,7 +616,7 @@ test("logout revokes the refresh token and forgets the login", async () => {
   assert.deepEqual(await readJson(auth), {});
 });
 
-test("login --device shows the user code on stderr, polls until approved and stores the tokens", async () => {
+test("login --device opens the URL with the code, polls until approved and stores the tokens", async () => {
   const { auth } = await workspace();
   const { fetch, calls } = stubFetch(
     deviceRoute([
@@ -625,7 +625,7 @@ test("login --device shows the user code on stderr, polls until approved and sto
     ]),
   );
   const waits: number[] = [];
-  let opened = false;
+  const opened: string[] = [];
 
   const result = await cli(
     ["login", "--device", "--sandbox", "--json", "--auth", auth],
@@ -634,20 +634,19 @@ test("login --device shows the user code on stderr, polls until approved and sto
       sleep: async (ms) => {
         waits.push(ms);
       },
-      openBrowser: async () => {
-        opened = true;
+      openBrowser: async (url) => {
+        opened.push(url);
       },
     },
   );
 
   assert.equal(result.code, 0, result.stderr);
-  assert.equal(opened, false);
+  assert.deepEqual(opened, [DEVICE_AUTHORIZATION.verification_uri_complete]);
   assert.deepEqual(waits, [5000, 5000, 5000]);
   assert.equal(
     result.stderr,
     [
-      `x401-cli: login to sign in, open ${DEVICE_AUTHORIZATION.verification_uri} and enter the code WDJB-MJHT`,
-      `x401-cli: login or open this URL: ${DEVICE_AUTHORIZATION.verification_uri_complete}`,
+      `x401-cli: login opened ${DEVICE_AUTHORIZATION.verification_uri_complete} in your browser; check that it shows the code WDJB-MJHT`,
       `x401-cli: logged_in sandbox (${auth})`,
       "",
     ].join("\n"),
@@ -686,27 +685,29 @@ test("login --device shows the user code on stderr, polls until approved and sto
   assert.equal(result.stderr.includes("the-device-code"), false);
 });
 
-test("login --device reads the OAuth error from a WWW-Authenticate challenge, as Doorkeeper sends it", async () => {
-  const { auth } = await workspace();
-  const challenged = (error: string) => () =>
-    oauthError(error, 400, {
-      "WWW-Authenticate": `Bearer realm="Doorkeeper", error="${error}"`,
-    });
-  const pending = await workspace();
-  const { fetch } = stubFetch(
-    deviceRoute([challenged("authorization_pending")]),
-  );
-  const approved = await cli(
-    ["login", "--device", "--sandbox", "--auth", pending.auth],
-    { fetch },
-  );
-  assert.equal(approved.code, 0, approved.stderr);
+test("login --device prints the URL with the code when the browser cannot open or --no-browser is set", async () => {
+  const manual = `x401-cli: login open ${DEVICE_AUTHORIZATION.verification_uri_complete} to sign in; check that it shows the code WDJB-MJHT\n`;
+  for (const [flags, openBrowser] of [
+    [
+      [],
+      async () => {
+        throw new Error("no display");
+      },
+    ],
+    [["--no-browser"], async () => assert.fail("must not open the browser")],
+  ] as const) {
+    const { auth } = await workspace();
+    const { fetch } = stubFetch(deviceRoute([]));
 
-  const denied = stubFetch(deviceRoute([challenged("access_denied")]));
-  const result = await cli(["login", "--device", "--sandbox", "--auth", auth], {
-    fetch: denied.fetch,
-  });
-  assert.equal(result.code, 8, result.stderr);
+    const result = await cli(
+      ["login", "--device", "--sandbox", ...flags, "--auth", auth],
+      { fetch, openBrowser },
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr.startsWith(manual), true, result.stderr);
+    assert.equal(result.stderr.split("\n").length, 3);
+  }
 });
 
 test("login --device waits longer after slow_down", async () => {

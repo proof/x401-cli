@@ -39,7 +39,7 @@ Options
   --timeout <duration>  How long to wait for the user's approval, e.g. 9m (default: 15m)
   --no-wait             Return as soon as the approval is pending (exit 5), resume later
   --no-browser          login: print the sign-in URL instead of opening the browser
-  --device              login: sign in with a code on any device, without a local browser
+  --device              login: sign in with a code instead of a local redirect
   -X, --method <m>      fetch: HTTP method
   -H, --header <h>      fetch: header "Name: value", repeatable
   -d, --data <body>     fetch: body; @file or @- for stdin
@@ -197,6 +197,13 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
 }
 
 function openBrowser(url: string): Promise<void> {
+  if (
+    process.platform === "linux" &&
+    !process.env.DISPLAY &&
+    !process.env.WAYLAND_DISPLAY
+  ) {
+    return Promise.reject(new Error("no display"));
+  }
   const [command, ...args] =
     process.platform === "darwin"
       ? ["open", url]
@@ -206,10 +213,11 @@ function openBrowser(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command!, args, { stdio: "ignore", detached: true });
     child.once("error", reject);
-    child.once("spawn", () => {
-      child.unref();
-      resolve();
-    });
+    child.once("exit", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`${command} exited with ${String(code)}`)),
+    );
   });
 }
 
