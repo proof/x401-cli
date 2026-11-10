@@ -6,7 +6,7 @@ import {
   writeCredentials,
   type Tokens,
 } from "./credentials.ts";
-import { issuerOf, type Issuers } from "./environment.ts";
+import { CLIENT_IDS, issuerOf, type Issuers } from "./environment.ts";
 import { refresh, type OAuthDeps } from "./oauth.ts";
 import { CliError, type Io } from "./output.ts";
 
@@ -16,6 +16,7 @@ export type Deps = {
   fetch: typeof globalThis.fetch;
   openBrowser: (url: string) => Promise<void>;
   now: () => number;
+  sleep: (ms: number) => Promise<void>;
   readStdin: () => Promise<Buffer>;
   issuers?: Issuers;
 };
@@ -27,6 +28,7 @@ export type Options = {
   timeoutMs: number;
   noWait: boolean;
   noBrowser: boolean;
+  device: boolean;
   method?: string;
   headers: string[];
   data?: string;
@@ -45,6 +47,7 @@ export const loginCommand = (environment: Environment): string =>
 export function oauthDeps(ctx: Context, environment: Environment): OAuthDeps {
   return {
     issuer: issuerOf(environment, ctx.issuers),
+    clientId: CLIENT_IDS[environment],
     fetch: ctx.fetch,
     now: ctx.now,
   };

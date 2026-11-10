@@ -11,8 +11,8 @@ import {
   writeCredentials,
   type Tokens,
 } from "../credentials.ts";
-import { CLIENT_ID, ENVIRONMENTS } from "../environment.ts";
-import { login, revoke } from "../oauth.ts";
+import { CLIENT_IDS, ENVIRONMENTS } from "../environment.ts";
+import { deviceLogin, login, revoke } from "../oauth.ts";
 import { CliError, EXIT, event, failureJson } from "../output.ts";
 
 const environments = (ctx: Context): Environment[] =>
@@ -22,12 +22,16 @@ const environmentOf = (ctx: Context): Environment =>
   ctx.options.sandbox ? "sandbox" : "production";
 
 async function signIn(ctx: Context, environment: Environment): Promise<Tokens> {
-  const tokens = await login(oauthDeps(ctx, environment), {
+  const deps = oauthDeps(ctx, environment);
+  const options = {
     io: ctx.io,
     openBrowser: ctx.openBrowser,
     noBrowser: ctx.options.noBrowser,
     timeoutMs: ctx.options.timeoutMs,
-  });
+  };
+  const tokens = ctx.options.device
+    ? await deviceLogin(deps, { ...options, sleep: ctx.sleep })
+    : await login(deps, options);
   const path = ctx.options.auth;
   await withLock(path, async () => {
     const credentials = await readCredentials(path);
@@ -102,6 +106,7 @@ export async function logoutCommand(ctx: Context): Promise<void> {
 type Status = {
   environment: Environment;
   issuer: string;
+  client_id: string;
   expires_at: number | null;
   refreshable: boolean;
 };
@@ -118,6 +123,7 @@ export async function statusCommand(ctx: Context): Promise<number> {
           {
             environment,
             issuer: loginIssuer(environment, tokens),
+            client_id: CLIENT_IDS[environment],
             expires_at: tokens.expires_at ?? null,
             refreshable: tokens.refresh_token !== undefined,
           },
@@ -129,7 +135,6 @@ export async function statusCommand(ctx: Context): Promise<number> {
     `no login; run \`x401-cli login${ctx.options.sandbox ? " --sandbox" : ""}\``,
   );
   const summary = {
-    client_id: CLIENT_ID,
     credentials_file: path,
     token_source: fromEnv ? "env" : "file",
     logins: entries,
@@ -140,11 +145,10 @@ export async function statusCommand(ctx: Context): Promise<number> {
   } else {
     ctx.io.stdout.write(
       [
-        `client_id: ${CLIENT_ID}`,
         `credentials: ${path}${fromEnv ? " (overridden by PROOF_ACCESS_TOKEN)" : ""}`,
         ...entries.map(
           (entry) =>
-            `${entry.environment} (${entry.issuer}): expires ${
+            `${entry.environment} (${entry.issuer}, client ${entry.client_id}): expires ${
               entry.expires_at === null
                 ? "never"
                 : new Date(entry.expires_at * 1000).toISOString()

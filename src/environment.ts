@@ -6,7 +6,10 @@ import {
 import type { DcApiRequest } from "@proof.com/x401-agent";
 
 export const ENVIRONMENTS: readonly Environment[] = ["production", "sandbox"];
-export const CLIENT_ID = "cag5xwbbz";
+export const CLIENT_IDS: Readonly<Record<Environment, string>> = {
+  production: "caynqpyde",
+  sandbox: "caynxy5ad",
+};
 export const SCOPE = "agentic";
 
 export type Issuers = Partial<Record<Environment, string>>;
