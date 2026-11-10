@@ -1,6 +1,6 @@
 {
   "name": "@proof.com/x401-cli",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "x401-cli: fetch x401-protected URLs from a terminal, a coding agent or a cron job with the user's Proof credential.",
   "keywords": [
     "x401",
