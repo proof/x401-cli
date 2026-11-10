@@ -2,16 +2,15 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import * as oauth from "oauth4webapi";
 import type { Tokens } from "./credentials.ts";
-import { CLIENT_ID, SCOPE } from "./environment.ts";
+import { SCOPE } from "./environment.ts";
 import { CliError, event, type Io } from "./output.ts";
 
 export type OAuthDeps = {
   issuer: string;
+  clientId: string;
   fetch: typeof globalThis.fetch;
   now: () => number;
 };
-
-const CLIENT: oauth.Client = { client_id: CLIENT_ID };
 
 const CALLBACK_PAGE =
   "<!doctype html><title>x401-cli</title><p>Signed in. You can close this window.</p>";
@@ -134,12 +133,13 @@ export async function login(
   options: SignInOptions,
 ): Promise<Tokens> {
   const as = await server(deps);
+  const client: oauth.Client = { client_id: deps.clientId };
   const codeVerifier = oauth.generateRandomCodeVerifier();
   const state = oauth.generateRandomState();
   const { redirectUri, callback, close } = await listen();
   try {
     const url = new URL(as.authorization_endpoint!);
-    url.searchParams.set("client_id", CLIENT_ID);
+    url.searchParams.set("client_id", deps.clientId);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("scope", SCOPE);
@@ -165,14 +165,14 @@ export async function login(
     const callbackUrl = await Promise.race([callback, timeout]);
     const parameters = oauth.validateAuthResponse(
       as,
-      CLIENT,
+      client,
       callbackUrl,
       state,
     );
     const response = await reach("exchange the sign-in code", () =>
       oauth.authorizationCodeGrantRequest(
         as,
-        CLIENT,
+        client,
         oauth.None(),
         parameters,
         redirectUri,
@@ -182,7 +182,7 @@ export async function login(
     );
     return tokens(
       deps,
-      await oauth.processAuthorizationCodeResponse(as, CLIENT, response),
+      await oauth.processAuthorizationCodeResponse(as, client, response),
     );
   } finally {
     close();
@@ -214,6 +214,7 @@ export async function deviceLogin(
   options: SignInOptions & { sleep: (ms: number) => Promise<void> },
 ): Promise<Tokens> {
   const as = await server(deps);
+  const client: oauth.Client = { client_id: deps.clientId };
   if (as.device_authorization_endpoint === undefined) {
     throw new CliError(
       "usage",
@@ -223,7 +224,7 @@ export async function deviceLogin(
   const started = await reach("start the device sign-in", () =>
     oauth.deviceAuthorizationRequest(
       as,
-      CLIENT,
+      client,
       oauth.None(),
       { scope: SCOPE },
       requestOptions(deps),
@@ -233,7 +234,7 @@ export async function deviceLogin(
   try {
     device = await oauth.processDeviceAuthorizationResponse(
       as,
-      CLIENT,
+      client,
       started,
     );
   } catch (error) {
@@ -273,7 +274,7 @@ export async function deviceLogin(
     const response = await reach("check the device sign-in", () =>
       oauth.deviceCodeGrantRequest(
         as,
-        CLIENT,
+        client,
         oauth.None(),
         device.device_code,
         requestOptions(deps),
@@ -282,7 +283,7 @@ export async function deviceLogin(
     try {
       return tokens(
         deps,
-        await oauth.processDeviceCodeResponse(as, CLIENT, response),
+        await oauth.processDeviceCodeResponse(as, client, response),
       );
     } catch (error) {
       switch (oauthErrorOf(error)) {
@@ -317,10 +318,11 @@ export async function refresh(
     );
   }
   const as = await server(deps);
+  const client: oauth.Client = { client_id: deps.clientId };
   const response = await reach("refresh the token", () =>
     oauth.refreshTokenGrantRequest(
       as,
-      CLIENT,
+      client,
       oauth.None(),
       refreshToken,
       requestOptions(deps),
@@ -329,7 +331,7 @@ export async function refresh(
   try {
     return tokens(
       deps,
-      await oauth.processRefreshTokenResponse(as, CLIENT, response),
+      await oauth.processRefreshTokenResponse(as, client, response),
     );
   } catch {
     throw new CliError(
@@ -341,13 +343,14 @@ export async function refresh(
 
 export async function revoke(deps: OAuthDeps, current: Tokens): Promise<void> {
   const as = await server(deps);
+  const client: oauth.Client = { client_id: deps.clientId };
   if (as.revocation_endpoint === undefined) {
     return;
   }
   const response = await reach("revoke the token", () =>
     oauth.revocationRequest(
       as,
-      CLIENT,
+      client,
       oauth.None(),
       current.refresh_token ?? current.access_token,
       {

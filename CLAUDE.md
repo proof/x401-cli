@@ -6,7 +6,7 @@ in to Proof and stores the tokens; everything x401 comes from `@proof.com/x401-a
 ## Rules
 
 1. **No x401 logic here.** The CLI maps x401-agent calls to commands, files and exit codes.
-2. **OAuth through `oauth4webapi` only.** Two login modes, one public client `cag5xwbbz`, no secret:
+2. **OAuth through `oauth4webapi` only.** Two login modes, one public client per environment (`caynxy5ad` sandbox, `caynqpyde` production), no secret:
    authorization code with PKCE S256 and a loopback redirect (default), and the device
    authorization grant, RFC 8628 (`login --device`), which polls at the server's `interval`.
 3. **Output is a contract.** stdout carries only the endpoint's body, one JSON object (`--json`),

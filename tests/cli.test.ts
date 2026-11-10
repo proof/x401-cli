@@ -15,6 +15,7 @@ import {
   cli,
   DEVICE_AUTHORIZATION,
   deviceRoute,
+  SANDBOX,
   NOW,
   oauthError,
   PENDING,
@@ -314,7 +315,7 @@ test("an expired access token is refreshed under the lock and the new pair is st
   const form = new URLSearchParams(await refresh.text());
   assert.equal(form.get("grant_type"), "refresh_token");
   assert.equal(form.get("refresh_token"), "ref");
-  assert.equal(form.get("client_id"), "cag5xwbbz");
+  assert.equal(form.get("client_id"), "caynxy5ad");
   const proof = calls.find((call) => call.url.endsWith("/dc-api/requests"))!;
   assert.equal(proof.headers.get("authorization"), "Bearer fresh-access");
   const stored = await readJson(auth);
@@ -523,7 +524,7 @@ test("login signs in through the loopback redirect with PKCE and stores the toke
 
   assert.equal(result.code, 0, result.stderr);
   assert.equal(authorizeUrl!.origin, "https://api.fairfax.proof.com");
-  assert.equal(authorizeUrl!.searchParams.get("client_id"), "cag5xwbbz");
+  assert.equal(authorizeUrl!.searchParams.get("client_id"), "caynxy5ad");
   assert.equal(authorizeUrl!.searchParams.get("scope"), "agentic");
   assert.equal(authorizeUrl!.searchParams.get("code_challenge_method"), "S256");
   assert.match(
@@ -596,11 +597,11 @@ test("status reports the logins and exits unauthorized when there are none", asy
     {
       environment: "sandbox",
       issuer: "https://api.fairfax.proof.com",
+      client_id: "caynxy5ad",
       expires_at: NOW + 3600,
       refreshable: true,
     },
   ]);
-  assert.equal(some.json().client_id, "cag5xwbbz");
 });
 
 test("logout revokes the refresh token and forgets the login", async () => {
@@ -671,7 +672,7 @@ test("login --device opens the URL with the code, polls until approved and store
     call.url.endsWith("/oauth/v2/device_authorization"),
   )!;
   const startForm = new URLSearchParams(await start.text());
-  assert.equal(startForm.get("client_id"), "cag5xwbbz");
+  assert.equal(startForm.get("client_id"), "caynxy5ad");
   assert.equal(startForm.get("scope"), "agentic");
   const polls = calls.filter((call) => call.url.endsWith("/oauth/v2/token"));
   assert.equal(polls.length, 3);
@@ -681,7 +682,7 @@ test("login --device opens the URL with the code, polls until approved and store
     "urn:ietf:params:oauth:grant-type:device_code",
   );
   assert.equal(pollForm.get("device_code"), "the-device-code");
-  assert.equal(pollForm.get("client_id"), "cag5xwbbz");
+  assert.equal(pollForm.get("client_id"), "caynxy5ad");
   assert.equal(pollForm.has("client_secret"), false);
   assert.deepEqual(await readJson(auth), {
     sandbox: {
@@ -695,6 +696,27 @@ test("login --device opens the URL with the code, polls until approved and store
   assert.equal(result.stdout.includes("fresh-"), false);
   assert.equal(result.stderr.includes("fresh-"), false);
   assert.equal(result.stderr.includes("the-device-code"), false);
+});
+
+test("production signs in with the production client", async () => {
+  const { auth } = await workspace();
+  const { fetch, calls } = stubFetch(deviceRoute([]));
+
+  const result = await cli(
+    ["login", "--device", "--no-browser", "--json", "--auth", auth],
+    { fetch, sleep: async () => undefined, env: { PROOF_ISSUER: SANDBOX } },
+  );
+
+  assert.equal(result.code, 0, result.stderr);
+  const forms = await Promise.all(
+    calls
+      .filter((call) => call.method === "POST")
+      .map(async (call) => new URLSearchParams(await call.text())),
+  );
+  assert.deepEqual(
+    forms.map((form) => form.get("client_id")),
+    ["caynqpyde", "caynqpyde"],
+  );
 });
 
 test("login --device prints the URL and the code without the browser line when the browser cannot open or --no-browser is set", async () => {
